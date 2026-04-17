@@ -1,0 +1,79 @@
+# WorldBoss 配置文件
+
+boss-settings:
+  bosses:
+    example_boss:
+      mythicmob-id: "SkeletalKnight"
+      display-name: "&c骷髏騎士王"
+      spawn-location:
+        world: "world"
+        x: 100.0
+        y: 64.0
+        z: 200.0
+      spawn:
+        interval: 3600
+        schedule:
+          - "THURSDAY 00:00"
+          - "SATURDAY 20:00"
+      despawn-timeout: 180
+
+leaderboard:
+  example_boss:
+    realtime:
+      enabled: true
+      location:
+        world: "world"
+        x: 105.0
+        y: 70.0
+        z: 200.0
+      display-count: 10
+      title: "&6&l即時傷害排行榜"
+      format: "&e#%rank% &f%player% &7- &c%damage%"
+    history:
+      enabled: true
+      location:
+        world: "world"
+        x: 110.0
+        y: 70.0
+        z: 200.0
+      display-count: 10
+      title: "&b&l歷史最高傷害"
+      format: "&e#%rank% &f%player% &7- &c%damage%"
+    hide-realtime-on-death: true
+
+loot:
+  example_boss:
+    chest-location:
+      world: "world"
+      x: 102.0
+      y: 64.0
+      z: 200.0
+
+broadcast:
+  countdown-message: "&6&l【世界Boss】&e%boss_name% &f將在 &c%time% &f後出現！"
+  countdown-times: [30, 20, 10]
+  spawn-message: "&6&l【世界Boss】&e%boss_name% &f已降臨！快去挑戰吧！"
+  despawn-message: "&6&l【世界Boss】&e%boss_name% &f因無人攻擊已消失！"
+
+reward:
+  reward-message: "&a你獲得了 %boss_name% 的第 %rank% 名獎勵！共 %count% 個物品"
+  no-drop-message: "&e你是 %boss_name% 的第 %rank% 名，但本次未擲中任何獎勵"
+
+discord:
+  enabled: false
+  channel-id: "000000000000000000"
+  embed:
+    footer: "WorldBoss 通知系統"
+    spawn:
+      color: "#FF4444"
+      title: "⚔️ Boss 出現通知"
+      description: "**%boss_name%** 已出現！快來挑戰吧！"
+    death:
+      color: "#FFD700"
+      title: "💀 Boss 擊敗通知"
+      description: "**%boss_name%** 已被擊敗！"
+      top-players-title: "🏆 前三名傷害"
+    despawn:
+      color: "#808080"
+      title: "⏰ Boss 消失通知"
+      description: "**%boss_name%** 因無人攻擊已消失"

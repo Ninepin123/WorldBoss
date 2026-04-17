@@ -1,0 +1,24 @@
+name: WorldBoss
+version: '${project.version}'
+main: me.ninepin.worldboss.WorldBoss
+api-version: '1.21'
+depend: [MythicMobs, DecentHolograms]
+softdepend: [DiscordSRV]
+description: 世界 Boss 系統 - 定時生成、傷害排行榜、戰利品分配
+
+commands:
+  wb:
+    description: 世界Boss玩家指令
+    usage: /wb <list|info>
+  wbadmin:
+    description: 世界Boss管理指令
+    usage: /wbadmin <spawn|despawn|reload|drops|setdrop> [args]
+    permission: worldboss.admin
+
+permissions:
+  worldboss.use:
+    description: 允許使用 /wb 指令
+    default: true
+  worldboss.admin:
+    description: 允許使用 /wbadmin 管理指令
+    default: op

@@ -1,0 +1,229 @@
+package me.ninepin.worldboss.hologram;
+
+import eu.decentsoftware.holograms.api.DHAPI;
+import eu.decentsoftware.holograms.api.holograms.Hologram;
+import me.ninepin.worldboss.WorldBoss;
+import me.ninepin.worldboss.boss.BossData;
+import me.ninepin.worldboss.config.ConfigManager;
+import me.ninepin.worldboss.damage.DamageLeaderboard;
+import me.ninepin.worldboss.damage.DamageTracker;
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.OfflinePlayer;
+import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.scheduler.BukkitTask;
+
+import java.util.*;
+import java.util.logging.Level;
+
+public class HologramManager {
+
+    private final WorldBoss plugin;
+    private BukkitTask updateTask;
+    private final Set<String> activeRealtimeHolograms = new HashSet<>();
+
+    public HologramManager(WorldBoss plugin) {
+        this.plugin = plugin;
+    }
+
+    public void init() {
+        createAllHolograms();
+        startRealtimeUpdater();
+    }
+
+    public void shutdown() {
+        if (updateTask != null) updateTask.cancel();
+        removeAllHolograms();
+    }
+
+    private void createAllHolograms() {
+        for (String bossId : plugin.getConfigManager().getBosses().keySet()) {
+            ConfigManager.LeaderboardConfig lbConfig = plugin.getConfigManager().getLeaderboardConfig(bossId);
+            if (lbConfig == null) continue;
+
+            // Create history hologram (always visible)
+            if (lbConfig.historyEnabled && lbConfig.historyLocation != null && lbConfig.historyLocation.getWorld() != null) {
+                try {
+                    removeHologramIfExists(getHistoryName(bossId));
+                    List<String> lines = buildHistoryLines(bossId, lbConfig);
+                    DHAPI.createHologram(getHistoryName(bossId), lbConfig.historyLocation, lines);
+                } catch (Exception e) {
+                    plugin.getLogger().log(Level.WARNING, "建立歷史排行榜 Hologram 失敗: " + bossId, e);
+                }
+            }
+
+            // Create realtime hologram (always visible)
+            if (lbConfig.realtimeEnabled && lbConfig.realtimeLocation != null && lbConfig.realtimeLocation.getWorld() != null) {
+                try {
+                    removeHologramIfExists(getRealtimeName(bossId));
+                    List<String> lines = buildRealtimeLines(bossId, lbConfig);
+                    DHAPI.createHologram(getRealtimeName(bossId), lbConfig.realtimeLocation, lines);
+                } catch (Exception e) {
+                    plugin.getLogger().log(Level.WARNING, "建立即時排行榜 Hologram 失敗: " + bossId, e);
+                }
+            }
+        }
+    }
+
+    public void onBossSpawn(String bossId) {
+        ConfigManager.LeaderboardConfig lbConfig = plugin.getConfigManager().getLeaderboardConfig(bossId);
+        if (lbConfig == null || !lbConfig.realtimeEnabled) return;
+
+        // Hologram already exists from init, just mark as active for frequent updates
+        activeRealtimeHolograms.add(bossId);
+        refreshRealtimeHologram(bossId);
+    }
+
+    public void onBossDeath(String bossId) {
+        ConfigManager.LeaderboardConfig lbConfig = plugin.getConfigManager().getLeaderboardConfig(bossId);
+
+        // Update history hologram
+        if (lbConfig != null && lbConfig.historyEnabled) {
+            refreshHistoryHologram(bossId);
+        }
+
+        // Don't remove realtime hologram, just refresh (shows "尚無傷害記錄" since damage resets)
+        activeRealtimeHolograms.remove(bossId);
+        refreshRealtimeHologram(bossId);
+    }
+
+    private void startRealtimeUpdater() {
+        updateTask = new BukkitRunnable() {
+            @Override
+            public void run() {
+                // Only frequently update active boss holograms
+                for (String bossId : new HashSet<>(activeRealtimeHolograms)) {
+                    refreshRealtimeHologram(bossId);
+                }
+            }
+        }.runTaskTimer(plugin, 40L, 40L); // 2 seconds
+    }
+
+    private void refreshRealtimeHologram(String bossId) {
+        ConfigManager.LeaderboardConfig lbConfig = plugin.getConfigManager().getLeaderboardConfig(bossId);
+        if (lbConfig == null) return;
+
+        String holoName = getRealtimeName(bossId);
+        if (!hologramExists(holoName)) return;
+
+        try {
+            List<String> lines = buildRealtimeLines(bossId, lbConfig);
+            Hologram holo = DHAPI.getHologram(holoName);
+            if (holo != null) {
+                DHAPI.setHologramLines(holo, lines);
+            }
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.FINE, "更新即時排行榜失敗: " + bossId, e);
+        }
+    }
+
+    private void refreshHistoryHologram(String bossId) {
+        ConfigManager.LeaderboardConfig lbConfig = plugin.getConfigManager().getLeaderboardConfig(bossId);
+        if (lbConfig == null) return;
+
+        String holoName = getHistoryName(bossId);
+        try {
+            removeHologramIfExists(holoName);
+            List<String> lines = buildHistoryLines(bossId, lbConfig);
+            DHAPI.createHologram(holoName, lbConfig.historyLocation, lines);
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.WARNING, "更新歷史排行榜失敗: " + bossId, e);
+        }
+    }
+
+    private List<String> buildRealtimeLines(String bossId, ConfigManager.LeaderboardConfig lbConfig) {
+        List<String> lines = new ArrayList<>();
+        lines.add(getBossDisplayName(bossId) + " " + lbConfig.realtimeTitle);
+
+        DamageTracker tracker = plugin.getDamageTracker();
+        List<Map.Entry<UUID, Double>> top = tracker.getTopDamage(bossId, lbConfig.realtimeDisplayCount);
+
+        if (top.isEmpty()) {
+            lines.add("&7尚無傷害記錄");
+        } else {
+            int rank = 1;
+            for (Map.Entry<UUID, Double> entry : top) {
+                OfflinePlayer player = Bukkit.getOfflinePlayer(entry.getKey());
+                String name = player.getName() != null ? player.getName() : entry.getKey().toString().substring(0, 8);
+                String line = lbConfig.realtimeFormat
+                        .replace("%rank%", String.valueOf(rank))
+                        .replace("%player%", name)
+                        .replace("%damage%", formatDamage(entry.getValue()));
+                lines.add(line);
+                rank++;
+            }
+        }
+        return lines;
+    }
+
+    private List<String> buildHistoryLines(String bossId, ConfigManager.LeaderboardConfig lbConfig) {
+        List<String> lines = new ArrayList<>();
+        lines.add(getBossDisplayName(bossId) + " " + lbConfig.historyTitle);
+
+        DamageLeaderboard leaderboard = plugin.getDamageLeaderboard();
+        List<Map.Entry<UUID, DamageLeaderboard.HistoryRecord>> top =
+                leaderboard.getTopHistory(bossId, lbConfig.historyDisplayCount);
+
+        if (top.isEmpty()) {
+            lines.add("&7尚無歷史記錄");
+        } else {
+            int rank = 1;
+            for (Map.Entry<UUID, DamageLeaderboard.HistoryRecord> entry : top) {
+                String name = entry.getValue().name();
+                String line = lbConfig.historyFormat
+                        .replace("%rank%", String.valueOf(rank))
+                        .replace("%player%", name)
+                        .replace("%damage%", formatDamage(entry.getValue().damage()));
+                lines.add(line);
+                rank++;
+            }
+        }
+        return lines;
+    }
+
+    private String formatDamage(double damage) {
+        if (damage >= 1_000_000) {
+            return String.format("%.1fM", damage / 1_000_000);
+        } else if (damage >= 1_000) {
+            return String.format("%.1fK", damage / 1_000);
+        }
+        return String.format("%.0f", damage);
+    }
+
+    private void removeHologramIfExists(String name) {
+        try {
+            if (hologramExists(name)) {
+                DHAPI.removeHologram(name);
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private boolean hologramExists(String name) {
+        try {
+            return DHAPI.getHologram(name) != null;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private void removeAllHolograms() {
+        for (String bossId : plugin.getConfigManager().getBosses().keySet()) {
+            removeHologramIfExists(getRealtimeName(bossId));
+            removeHologramIfExists(getHistoryName(bossId));
+        }
+        activeRealtimeHolograms.clear();
+    }
+
+    private String getRealtimeName(String bossId) {
+        return "wb_" + bossId + "_realtime";
+    }
+
+    private String getHistoryName(String bossId) {
+        return "wb_" + bossId + "_history";
+    }
+
+    private String getBossDisplayName(String bossId) {
+        BossData boss = plugin.getConfigManager().getBoss(bossId);
+        return boss != null ? boss.getDisplayName() : bossId;
+    }
+}
