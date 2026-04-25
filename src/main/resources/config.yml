@@ -55,6 +55,10 @@ reward:
 discord:
   enabled: false
   channel-id: "000000000000000000"
+  channels:
+    respawn: "000000000000000000"
+    death: "000000000000000000"
+    despawn: "000000000000000000"
   embed:
     footer: "WorldBoss 通知系統"
     spawn:

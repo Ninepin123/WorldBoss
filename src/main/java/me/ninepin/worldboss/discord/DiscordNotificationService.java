@@ -13,9 +13,14 @@ import java.time.Instant;
 
 public class DiscordNotificationService {
 
+    private static final String DEFAULT_CHANNEL_ID = "000000000000000000";
+
     private final WorldBoss plugin;
     private boolean enabled;
     private String channelId;
+    private String spawnChannelId;
+    private String deathChannelId;
+    private String despawnChannelId;
     private EmbedConfig spawnEmbed;
     private EmbedConfig deathEmbed;
     private EmbedConfig despawnEmbed;
@@ -29,7 +34,10 @@ public class DiscordNotificationService {
 
     private void loadConfig() {
         enabled = plugin.getConfig().getBoolean("discord.enabled", false);
-        channelId = plugin.getConfig().getString("discord.channel-id", "");
+        channelId = getConfiguredChannelId("discord.channel-id");
+        spawnChannelId = getEventChannelId("respawn", "spawn");
+        deathChannelId = getEventChannelId("death");
+        despawnChannelId = getEventChannelId("despawn");
         footer = plugin.getConfig().getString("discord.embed.footer", "WorldBoss 通知系統");
 
         spawnEmbed = new EmbedConfig("discord.embed.spawn.", "#FF4444", "⚔️ Boss 出現通知", "**%boss_name%** 已出現！快來挑戰吧！");
@@ -43,7 +51,9 @@ public class DiscordNotificationService {
             plugin.getLogger().warning("DiscordSRV 未安裝，Discord 通知無法運作");
             return;
         }
-        plugin.getLogger().info("Discord 通知已啟用 (Embed 模式)，頻道 ID: " + channelId);
+        plugin.getLogger().info("Discord 通知已啟用 (Embed 模式)，重生頻道 ID: " + spawnChannelId
+                + "，死亡頻道 ID: " + deathChannelId
+                + "，消失頻道 ID: " + despawnChannelId);
     }
 
     public void reload() {
@@ -53,24 +63,24 @@ public class DiscordNotificationService {
 
     public void notifyBossSpawn(String bossId, String bossName) {
         String cleanName = stripColor(bossName);
-        sendEmbed(spawnEmbed, bossId, cleanName, null);
+        sendEmbed(spawnEmbed, spawnChannelId, bossId, cleanName, null);
     }
 
     public void notifyBossDeath(String bossId, String bossName, String topPlayers) {
         String cleanName = stripColor(bossName);
-        sendEmbed(deathEmbed, bossId, cleanName, topPlayers);
+        sendEmbed(deathEmbed, deathChannelId, bossId, cleanName, topPlayers);
     }
 
     public void notifyBossDespawn(String bossId, String bossName) {
         String cleanName = stripColor(bossName);
-        sendEmbed(despawnEmbed, bossId, cleanName, null);
+        sendEmbed(despawnEmbed, despawnChannelId, bossId, cleanName, null);
     }
 
-    private void sendEmbed(EmbedConfig config, String bossId, String bossName, String topPlayers) {
+    private void sendEmbed(EmbedConfig config, String targetChannelId, String bossId, String bossName, String topPlayers) {
         try {
             if (!enabled) return;
 
-            TextChannel channel = resolveChannel();
+            TextChannel channel = resolveChannel(targetChannelId);
             if (channel == null) return;
 
             EmbedBuilder builder = new EmbedBuilder();
@@ -99,13 +109,35 @@ public class DiscordNotificationService {
         }
     }
 
-    private TextChannel resolveChannel() {
+    private String getEventChannelId(String... events) {
+        for (String event : events) {
+            String eventChannelId = getConfiguredChannelId("discord.channels." + event);
+            if (!eventChannelId.isBlank()) {
+                return eventChannelId;
+            }
+        }
+        return channelId;
+    }
+
+    private String getConfiguredChannelId(String path) {
+        String configuredChannelId = plugin.getConfig().getString(path, "");
+        if (configuredChannelId == null || configuredChannelId.isBlank() || DEFAULT_CHANNEL_ID.equals(configuredChannelId)) {
+            return "";
+        }
+        return configuredChannelId;
+    }
+
+    private TextChannel resolveChannel(String targetChannelId) {
         if (Bukkit.getPluginManager().getPlugin("DiscordSRV") == null) return null;
         JDA jda = DiscordSRV.getPlugin().getJda();
         if (jda == null) return null;
-        TextChannel ch = jda.getTextChannelById(channelId);
+        if (targetChannelId == null || targetChannelId.isBlank()) {
+            plugin.getLogger().warning("Discord 頻道 ID 未設定");
+            return null;
+        }
+        TextChannel ch = jda.getTextChannelById(targetChannelId);
         if (ch == null) {
-            plugin.getLogger().warning("找不到 Discord 頻道 ID: " + channelId);
+            plugin.getLogger().warning("找不到 Discord 頻道 ID: " + targetChannelId);
         }
         return ch;
     }

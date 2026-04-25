@@ -146,9 +146,13 @@ leaderboard:
 discord:
   enabled: true
   channel-id: "000000000000000000"
+  channels:
+    respawn: "000000000000000000"
+    death: "000000000000000000"
+    despawn: "000000000000000000"
 ```
 
-請將 `channel-id` 改成實際要發送通知的 Discord 頻道 ID。
+請將 `channels.respawn`、`channels.death`、`channels.despawn` 分別改成重生、死亡、消失通知要發送的 Discord 頻道 ID。若未設定個別頻道，會回退使用舊版的 `channel-id`。
 
 ## 注意事項
 
