@@ -39,7 +39,7 @@ public class BossService {
         this.hologramManager = hologramManager;
         this.discordService = discordService;
         this.rewardManager = rewardManager;
-        this.spawnScheduler = new SpawnScheduler(plugin, this, configService);
+        this.spawnScheduler = new SpawnScheduler(plugin, this, configService, discordService);
     }
 
     public void init() {

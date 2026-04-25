@@ -55,12 +55,19 @@ reward:
 discord:
   enabled: false
   channel-id: "000000000000000000"
+  countdown:
+    enabled: false
   channels:
+    countdown: "000000000000000000"
     respawn: "000000000000000000"
     death: "000000000000000000"
     despawn: "000000000000000000"
   embed:
     footer: "WorldBoss 通知系統"
+    countdown:
+      color: "#00AAFF"
+      title: "⏳ Boss 重生倒數"
+      description: "**%boss_name%** 將在 **%time%** 後重生！"
     spawn:
       color: "#FF4444"
       title: "⚔️ Boss 出現通知"

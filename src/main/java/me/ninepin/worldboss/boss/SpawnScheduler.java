@@ -3,6 +3,7 @@ package me.ninepin.worldboss.boss;
 import me.ninepin.worldboss.service.BossService;
 import me.ninepin.worldboss.service.ConfigService;
 import me.ninepin.worldboss.WorldBoss;
+import me.ninepin.worldboss.discord.DiscordNotificationService;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -20,15 +21,18 @@ public class SpawnScheduler {
     private final WorldBoss plugin;
     private final BossService bossService;
     private final ConfigService configService;
+    private final DiscordNotificationService discordService;
     private final Map<String, Long> nextIntervalSpawnMillis = new HashMap<>();
     private final Map<String, Long> nextScheduledSpawnMillis = new HashMap<>();
     private final Set<String> firedCountdowns = new HashSet<>();
     private BukkitTask timerTask;
 
-    public SpawnScheduler(WorldBoss plugin, BossService bossService, ConfigService configService) {
+    public SpawnScheduler(WorldBoss plugin, BossService bossService, ConfigService configService,
+                          DiscordNotificationService discordService) {
         this.plugin = plugin;
         this.bossService = bossService;
         this.configService = configService;
+        this.discordService = discordService;
     }
 
     public void startTimer() {
@@ -119,6 +123,12 @@ public class SpawnScheduler {
                         .replace("%boss_name%", bossName)
                         .replace("%time%", timeStr);
                 Bukkit.broadcast(SERIALIZER.deserialize(raw));
+
+                try {
+                    discordService.notifyBossCountdown(bossId, bossName, timeStr);
+                } catch (Exception e) {
+                    plugin.getLogger().warning("發送 Discord 倒數通知時出錯: " + e.getMessage());
+                }
             }
         }
     }

@@ -18,9 +18,12 @@ public class DiscordNotificationService {
     private final WorldBoss plugin;
     private boolean enabled;
     private String channelId;
+    private boolean countdownEnabled;
+    private String countdownChannelId;
     private String spawnChannelId;
     private String deathChannelId;
     private String despawnChannelId;
+    private EmbedConfig countdownEmbed;
     private EmbedConfig spawnEmbed;
     private EmbedConfig deathEmbed;
     private EmbedConfig despawnEmbed;
@@ -34,12 +37,15 @@ public class DiscordNotificationService {
 
     private void loadConfig() {
         enabled = plugin.getConfig().getBoolean("discord.enabled", false);
+        countdownEnabled = plugin.getConfig().getBoolean("discord.countdown.enabled", false);
         channelId = getConfiguredChannelId("discord.channel-id");
+        countdownChannelId = getEventChannelId("countdown", "respawn", "spawn");
         spawnChannelId = getEventChannelId("respawn", "spawn");
         deathChannelId = getEventChannelId("death");
         despawnChannelId = getEventChannelId("despawn");
         footer = plugin.getConfig().getString("discord.embed.footer", "WorldBoss 通知系統");
 
+        countdownEmbed = new EmbedConfig("discord.embed.countdown.", "#00AAFF", "⏳ Boss 重生倒數", "**%boss_name%** 將在 **%time%** 後重生！");
         spawnEmbed = new EmbedConfig("discord.embed.spawn.", "#FF4444", "⚔️ Boss 出現通知", "**%boss_name%** 已出現！快來挑戰吧！");
         deathEmbed = new EmbedConfig("discord.embed.death.", "#FFD700", "💀 Boss 擊敗通知", "**%boss_name%** 已被擊敗！");
         despawnEmbed = new EmbedConfig("discord.embed.despawn.", "#808080", "⏰ Boss 消失通知", "**%boss_name%** 因無人攻擊已消失");
@@ -51,7 +57,8 @@ public class DiscordNotificationService {
             plugin.getLogger().warning("DiscordSRV 未安裝，Discord 通知無法運作");
             return;
         }
-        plugin.getLogger().info("Discord 通知已啟用 (Embed 模式)，重生頻道 ID: " + spawnChannelId
+        plugin.getLogger().info("Discord 通知已啟用 (Embed 模式)，倒數頻道 ID: " + countdownChannelId
+                + "，重生頻道 ID: " + spawnChannelId
                 + "，死亡頻道 ID: " + deathChannelId
                 + "，消失頻道 ID: " + despawnChannelId);
     }
@@ -63,20 +70,26 @@ public class DiscordNotificationService {
 
     public void notifyBossSpawn(String bossId, String bossName) {
         String cleanName = stripColor(bossName);
-        sendEmbed(spawnEmbed, spawnChannelId, bossId, cleanName, null);
+        sendEmbed(spawnEmbed, spawnChannelId, bossId, cleanName, null, null);
     }
 
     public void notifyBossDeath(String bossId, String bossName, String topPlayers) {
         String cleanName = stripColor(bossName);
-        sendEmbed(deathEmbed, deathChannelId, bossId, cleanName, topPlayers);
+        sendEmbed(deathEmbed, deathChannelId, bossId, cleanName, topPlayers, null);
     }
 
     public void notifyBossDespawn(String bossId, String bossName) {
         String cleanName = stripColor(bossName);
-        sendEmbed(despawnEmbed, despawnChannelId, bossId, cleanName, null);
+        sendEmbed(despawnEmbed, despawnChannelId, bossId, cleanName, null, null);
     }
 
-    private void sendEmbed(EmbedConfig config, String targetChannelId, String bossId, String bossName, String topPlayers) {
+    public void notifyBossCountdown(String bossId, String bossName, String time) {
+        if (!countdownEnabled) return;
+        String cleanName = stripColor(bossName);
+        sendEmbed(countdownEmbed, countdownChannelId, bossId, cleanName, null, time);
+    }
+
+    private void sendEmbed(EmbedConfig config, String targetChannelId, String bossId, String bossName, String topPlayers, String time) {
         try {
             if (!enabled) return;
 
@@ -87,7 +100,8 @@ public class DiscordNotificationService {
             builder.setTitle(config.title);
             builder.setDescription(config.description
                     .replace("%boss_name%", bossName)
-                    .replace("%boss_id%", bossId));
+                    .replace("%boss_id%", bossId)
+                    .replace("%time%", time == null ? "" : time));
             builder.setColor(config.color);
             builder.setTimestamp(Instant.now());
 

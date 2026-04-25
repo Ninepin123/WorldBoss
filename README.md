@@ -146,13 +146,21 @@ leaderboard:
 discord:
   enabled: true
   channel-id: "000000000000000000"
+  countdown:
+    enabled: true
   channels:
+    countdown: "000000000000000000"
     respawn: "000000000000000000"
     death: "000000000000000000"
     despawn: "000000000000000000"
+  embed:
+    countdown:
+      color: "#00AAFF"
+      title: "⏳ Boss 重生倒數"
+      description: "**%boss_name%** 將在 **%time%** 後重生！"
 ```
 
-請將 `channels.respawn`、`channels.death`、`channels.despawn` 分別改成重生、死亡、消失通知要發送的 Discord 頻道 ID。若未設定個別頻道，會回退使用舊版的 `channel-id`。
+請將 `channels.countdown`、`channels.respawn`、`channels.death`、`channels.despawn` 分別改成倒數、重生、死亡、消失通知要發送的 Discord 頻道 ID。倒數通知需將 `discord.countdown.enabled` 設為 `true` 才會發送；若未設定個別頻道，倒數會回退使用重生頻道，其他通知會回退使用舊版的 `channel-id`。
 
 ## 注意事項
 
