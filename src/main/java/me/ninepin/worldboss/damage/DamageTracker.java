@@ -5,12 +5,10 @@ import java.util.*;
 public class DamageTracker {
 
     private final Map<String, Map<UUID, Double>> bossDamageMap = new HashMap<>();
-    private final Map<String, Set<UUID>> bossAttackers = new HashMap<>();
 
     public void recordDamage(String bossId, UUID playerUUID, double damage) {
         bossDamageMap.computeIfAbsent(bossId, k -> new HashMap<>())
                 .merge(playerUUID, damage, Double::sum);
-        bossAttackers.computeIfAbsent(bossId, k -> new HashSet<>()).add(playerUUID);
     }
 
     public List<Map.Entry<UUID, Double>> getTopDamage(String bossId, int n) {
@@ -30,17 +28,18 @@ public class DamageTracker {
     }
 
     public Set<UUID> getAttackers(String bossId) {
-        return bossAttackers.getOrDefault(bossId, Collections.emptySet());
+        Map<UUID, Double> damageMap = bossDamageMap.get(bossId);
+        if (damageMap == null) return Collections.emptySet();
+        return Collections.unmodifiableSet(damageMap.keySet());
     }
 
     public boolean hasAttacked(String bossId, UUID playerUUID) {
-        Set<UUID> attackers = bossAttackers.get(bossId);
-        return attackers != null && attackers.contains(playerUUID);
+        Map<UUID, Double> damageMap = bossDamageMap.get(bossId);
+        return damageMap != null && damageMap.containsKey(playerUUID);
     }
 
     public void resetBoss(String bossId) {
         bossDamageMap.remove(bossId);
-        bossAttackers.remove(bossId);
     }
 
     public Map<UUID, Double> getAllDamage(String bossId) {

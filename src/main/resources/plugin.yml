@@ -10,6 +10,7 @@ commands:
   wb:
     description: 世界Boss玩家指令
     usage: /wb <list|info>
+    permission: worldboss.use
   wbadmin:
     description: 世界Boss管理指令
     usage: /wbadmin <spawn|despawn|reload|drops|setdrop> [args]

@@ -1,11 +1,14 @@
 package me.ninepin.worldboss.loot;
 
-import me.ninepin.worldboss.WorldBoss;
+import me.ninepin.worldboss.service.ConfigService;
+import me.ninepin.worldboss.service.DamageService;
+import me.ninepin.worldboss.service.DropService;
 import me.ninepin.worldboss.boss.BossData;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.HashMap;
 import java.util.List;
@@ -14,35 +17,34 @@ import java.util.UUID;
 
 public class RewardManager {
 
+    private static final LegacyComponentSerializer SERIALIZER = LegacyComponentSerializer.legacyAmpersand();
     private static final int TOP_N = 3;
-    private final WorldBoss plugin;
+    private final JavaPlugin plugin;
+    private final ConfigService configService;
+    private final DamageService damageService;
+    private final DropService dropService;
 
-    public RewardManager(WorldBoss plugin) {
+    public RewardManager(JavaPlugin plugin, ConfigService configService,
+                         DamageService damageService, DropService dropService) {
         this.plugin = plugin;
+        this.configService = configService;
+        this.damageService = damageService;
+        this.dropService = dropService;
     }
 
     public void distributeRewards(String bossId) {
-        BossData bossData = plugin.getConfigManager().getBoss(bossId);
-        String bossName = bossData != null
-                ? ChatColor.translateAlternateColorCodes('&', bossData.getDisplayName())
-                : bossId;
+        BossData bossData = configService.getBoss(bossId);
+        String bossName = bossData != null ? bossData.getDisplayName() : bossId;
 
-        List<Map.Entry<UUID, Double>> top3 = plugin.getDamageTracker().getTopDamage(bossId, TOP_N);
+        List<Map.Entry<UUID, Double>> top3 = damageService.getTopDamage(bossId, TOP_N);
 
         if (top3.isEmpty()) {
             plugin.getLogger().info("Boss " + bossId + " 無玩家造成傷害，不發放獎勵");
             return;
         }
 
-        String rewardMsgTemplate = ChatColor.translateAlternateColorCodes('&',
-                plugin.getConfig().getString("reward.reward-message",
-                        "&a你獲得了 %boss_name% 的第 %rank% 名獎勵！共 %count% 個物品"));
-        String noDropMsgTemplate = ChatColor.translateAlternateColorCodes('&',
-                plugin.getConfig().getString("reward.no-drop-message",
-                        "&e你是 %boss_name% 的第 %rank% 名，但本次未擲中任何獎勵"));
-
-        rewardMsgTemplate = insertBossName(rewardMsgTemplate, bossName);
-        noDropMsgTemplate = insertBossName(noDropMsgTemplate, bossName);
+        String rewardMsgRaw = configService.getRewardMessage();
+        String noDropMsgRaw = configService.getNoDropMessage();
 
         int rank = 1;
         for (Map.Entry<UUID, Double> entry : top3) {
@@ -55,38 +57,26 @@ public class RewardManager {
                 continue;
             }
 
-            List<ItemStack> rewards = plugin.getLootConfig().rollDrops(bossId);
+            List<ItemStack> rewards = dropService.rollDrops(bossId);
 
             if (rewards.isEmpty()) {
-                player.sendMessage(noDropMsgTemplate
-                        .replace("%rank%", String.valueOf(rank)));
+                String raw = noDropMsgRaw
+                        .replace("%boss_name%", bossName)
+                        .replace("%rank%", String.valueOf(rank));
+                player.sendMessage(SERIALIZER.deserialize(raw));
             } else {
                 HashMap<Integer, ItemStack> overflow = player.getInventory().addItem(
                         rewards.toArray(new ItemStack[0]));
                 for (ItemStack leftover : overflow.values()) {
                     player.getWorld().dropItemNaturally(player.getLocation(), leftover);
                 }
-                player.sendMessage(rewardMsgTemplate
+                String raw = rewardMsgRaw
+                        .replace("%boss_name%", bossName)
                         .replace("%rank%", String.valueOf(rank))
-                        .replace("%count%", String.valueOf(rewards.size())));
+                        .replace("%count%", String.valueOf(rewards.size()));
+                player.sendMessage(SERIALIZER.deserialize(raw));
             }
             rank++;
         }
-    }
-
-    private String insertBossName(String template, String bossName) {
-        int idx = template.indexOf("%boss_name%");
-        if (idx < 0) return template;
-        String restoreColor = "";
-        for (int i = Math.min(idx - 2, template.length() - 2); i >= 0; i--) {
-            if (template.charAt(i) == '§') {
-                char code = Character.toLowerCase(template.charAt(i + 1));
-                if ((code >= '0' && code <= '9') || (code >= 'a' && code <= 'f')) {
-                    restoreColor = "§" + code;
-                    break;
-                }
-            }
-        }
-        return template.replace("%boss_name%", bossName + "§r" + restoreColor);
     }
 }

@@ -2,14 +2,15 @@ package me.ninepin.worldboss.gui;
 
 import io.lumine.mythic.bukkit.MythicBukkit;
 import me.ninepin.worldboss.WorldBoss;
-import me.ninepin.worldboss.boss.BossData;
-import me.ninepin.worldboss.config.ConfigManager;
+import me.ninepin.worldboss.loot.LootGUI;
+import me.ninepin.worldboss.service.BossService;
+import me.ninepin.worldboss.service.ConfigService;
+import me.ninepin.worldboss.util.SoundHelper;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
-import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -27,13 +28,18 @@ public class SettingsListener implements Listener {
 
     private final WorldBoss plugin;
     private final SettingsGUI gui;
+    private final ConfigService configService;
+    private final BossService bossService;
+    private final LootGUI lootGUI;
 
-    public SettingsListener(WorldBoss plugin, SettingsGUI gui) {
+    public SettingsListener(WorldBoss plugin, SettingsGUI gui, ConfigService configService,
+                            BossService bossService, LootGUI lootGUI) {
         this.plugin = plugin;
         this.gui = gui;
+        this.configService = configService;
+        this.bossService = bossService;
+        this.lootGUI = lootGUI;
     }
-
-    // ==================== Event Handlers ====================
 
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
@@ -72,8 +78,6 @@ public class SettingsListener implements Listener {
         }
     }
 
-    // ==================== Click Handlers ====================
-
     private void handleMainMenuClick(Player player, int slot, boolean leftClick, boolean rightClick) {
         if (slot == SettingsGUI.SLOT_NEW_BOSS) {
             player.closeInventory();
@@ -83,19 +87,18 @@ public class SettingsListener implements Listener {
             return;
         }
 
-        // Boss items (slots 9-44)
         if (slot >= 9 && slot <= 44) {
-            List<String> bossIds = plugin.getConfigManager().getBossIds();
+            List<String> bossIds = configService.getBossIds();
             int bossIndex = slot - 9;
             if (bossIndex < bossIds.size()) {
                 if (leftClick) {
                     gui.openBossMenu(player, bossIds.get(bossIndex));
                 } else if (rightClick) {
                     String bossId = bossIds.get(bossIndex);
-                    plugin.getConfigManager().deleteBoss(bossId);
-                    plugin.applyConfigChanges();
+                    configService.deleteBoss(bossId);
+                    bossService.reloadConfig();
                     player.sendMessage(Component.text("已刪除 Boss: " + bossId).color(NamedTextColor.GREEN));
-                    playSuccessSound(player);
+                    SoundHelper.playSuccess(player);
                     gui.openMainMenu(player);
                 }
             }
@@ -135,15 +138,15 @@ public class SettingsListener implements Listener {
                         "例如: MONDAY 20:00",
                         "星期: MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY");
             } else if (rightClick) {
-                plugin.getConfigManager().clearBossScheduledTimes(bossId);
-                plugin.applyConfigChanges();
+                configService.clearBossScheduledTimes(bossId);
+                bossService.reloadConfig();
                 player.sendMessage(Component.text("已清除所有排程時間").color(NamedTextColor.GREEN));
-                playSuccessSound(player);
+                SoundHelper.playSuccess(player);
                 gui.openBossMenu(player, bossId);
             }
         } else if (slot == SettingsGUI.SLOT_DROP_ITEMS) {
             gui.openGUIs.remove(player.getUniqueId());
-            plugin.getLootGUI().openDropsGUI(player, bossId);
+            lootGUI.openDropsGUI(player, bossId);
         } else if (slot == SettingsGUI.SLOT_REALTIME_LB) {
             if (leftClick) {
                 setLocationToCurrent(player, bossId, SettingsGUI.InputType.REALTIME_LB_LOCATION);
@@ -161,12 +164,10 @@ public class SettingsListener implements Listener {
         }
     }
 
-    // ==================== MythicMob ID Handling ====================
-
     private void handleMythicMobClick(Player player, String bossId) {
         player.closeInventory();
 
-        BossData boss = plugin.getConfigManager().getBoss(bossId);
+        var boss = configService.getBoss(bossId);
         String currentId = boss != null ? boss.getMythicMobId() : "未設定";
 
         player.sendMessage(Component.text("===== 設定 MythicMob ID =====").color(NamedTextColor.GOLD));
@@ -197,23 +198,19 @@ public class SettingsListener implements Listener {
         gui.pendingInputs.put(player.getUniqueId(), new SettingsGUI.PendingInput(SettingsGUI.InputType.MYTHICMOB_ID, bossId));
     }
 
-    // ==================== Location Handling ====================
-
     private void setLocationToCurrent(Player player, String bossId, SettingsGUI.InputType type) {
         Location loc = player.getLocation();
         switch (type) {
-            case SPAWN_LOCATION -> plugin.getConfigManager().setBossSpawnLocation(bossId, loc);
-            case REALTIME_LB_LOCATION -> plugin.getConfigManager().setRealtimeLBLocation(bossId, loc);
-            case HISTORY_LB_LOCATION -> plugin.getConfigManager().setHistoryLBLocation(bossId, loc);
+            case SPAWN_LOCATION -> configService.setBossSpawnLocation(bossId, loc);
+            case REALTIME_LB_LOCATION -> configService.setRealtimeLBLocation(bossId, loc);
+            case HISTORY_LB_LOCATION -> configService.setHistoryLBLocation(bossId, loc);
             default -> { return; }
         }
-        plugin.applyConfigChanges();
+        bossService.reloadConfig();
         player.sendMessage(Component.text("已設定座標為您當前的位置").color(NamedTextColor.GREEN));
-        playSuccessSound(player);
+        SoundHelper.playSuccess(player);
         gui.openBossMenu(player, bossId);
     }
-
-    // ==================== Chat Input ====================
 
     private void promptChatInput(Player player, String bossId, SettingsGUI.InputType type, String... messages) {
         player.closeInventory();
@@ -240,13 +237,12 @@ public class SettingsListener implements Listener {
 
         String bossId = pending.bossId();
 
-        // Handle cancel
         if ("cancel".equalsIgnoreCase(message.trim())) {
             gui.pendingInputs.remove(uuid);
             player.sendMessage(Component.text("已取消輸入").color(NamedTextColor.GRAY));
-            playCancelSound(player);
+            SoundHelper.playCancel(player);
             String lastBoss = gui.lastBossMenu.get(uuid);
-            if (lastBoss != null && plugin.getConfigManager().bossExists(lastBoss)) {
+            if (lastBoss != null && configService.bossExists(lastBoss)) {
                 gui.openBossMenu(player, lastBoss);
             } else {
                 gui.openMainMenu(player);
@@ -271,22 +267,22 @@ public class SettingsListener implements Listener {
         String newBossId = message.trim().replace(" ", "_").replaceAll("[^a-zA-Z0-9_-]", "");
         if (newBossId.isEmpty()) {
             player.sendMessage(Component.text("Boss ID 不能為空").color(NamedTextColor.RED));
-            playErrorSound(player);
+            SoundHelper.playError(player);
             return;
         }
-        if (plugin.getConfigManager().bossExists(newBossId)) {
+        if (configService.bossExists(newBossId)) {
             player.sendMessage(Component.text("Boss ID '" + newBossId + "' 已存在！").color(NamedTextColor.RED));
-            playErrorSound(player);
+            SoundHelper.playError(player);
             return;
         }
 
         gui.pendingInputs.remove(player.getUniqueId());
 
-        plugin.getConfigManager().createNewBoss(newBossId, "SkeletalKnight", "&c新 Boss", player.getLocation());
-        plugin.applyConfigChanges();
+        configService.createNewBoss(newBossId, "SkeletalKnight", "&c新 Boss", player.getLocation());
+        bossService.reloadConfig();
 
         player.sendMessage(Component.text("已建立新 Boss: " + newBossId).color(NamedTextColor.GREEN));
-        playSuccessSound(player);
+        SoundHelper.playSuccess(player);
         player.sendMessage(Component.text("請繼續設定 MythicMob ID 和其他選項").color(NamedTextColor.YELLOW));
         gui.openBossMenu(player, newBossId);
     }
@@ -297,10 +293,10 @@ public class SettingsListener implements Listener {
 
         if (mobIds.contains(input)) {
             gui.pendingInputs.remove(player.getUniqueId());
-            plugin.getConfigManager().setBossMythicMobId(bossId, input);
-            plugin.applyConfigChanges();
+            configService.setBossMythicMobId(bossId, input);
+            bossService.reloadConfig();
             player.sendMessage(Component.text("已設定 MythicMob ID: " + input).color(NamedTextColor.GREEN));
-            playSuccessSound(player);
+            SoundHelper.playSuccess(player);
             gui.openBossMenu(player, bossId);
             return;
         }
@@ -311,15 +307,15 @@ public class SettingsListener implements Listener {
 
         if (matches.isEmpty()) {
             player.sendMessage(Component.text("找不到匹配的 MythicMob ID: " + input).color(NamedTextColor.RED));
-            playErrorSound(player);
+            SoundHelper.playError(player);
             player.sendMessage(Component.text("請重新輸入，或輸入 cancel 取消").color(NamedTextColor.YELLOW));
         } else if (matches.size() == 1) {
             String matched = matches.get(0);
             gui.pendingInputs.remove(player.getUniqueId());
-            plugin.getConfigManager().setBossMythicMobId(bossId, matched);
-            plugin.applyConfigChanges();
+            configService.setBossMythicMobId(bossId, matched);
+            bossService.reloadConfig();
             player.sendMessage(Component.text("自動匹配到 MythicMob ID: " + matched).color(NamedTextColor.GREEN));
-            playSuccessSound(player);
+            SoundHelper.playSuccess(player);
             gui.openBossMenu(player, bossId);
         } else {
             player.sendMessage(Component.text("找到 " + matches.size() + " 個匹配的 ID，請輸入更精確的名稱:").color(NamedTextColor.YELLOW));
@@ -338,10 +334,10 @@ public class SettingsListener implements Listener {
 
     private void handleDisplayNameInput(Player player, String bossId, String message) {
         gui.pendingInputs.remove(player.getUniqueId());
-        plugin.getConfigManager().setBossDisplayName(bossId, message.trim());
-        plugin.applyConfigChanges();
+        configService.setBossDisplayName(bossId, message.trim());
+        bossService.reloadConfig();
         player.sendMessage(Component.text("已設定顯示名稱").color(NamedTextColor.GREEN));
-        playSuccessSound(player);
+        SoundHelper.playSuccess(player);
         gui.openBossMenu(player, bossId);
     }
 
@@ -349,21 +345,21 @@ public class SettingsListener implements Listener {
         Location loc = parseLocationInput(message.trim(), player);
         if (loc == null) {
             player.sendMessage(Component.text("無效的座標格式！使用: x y z 或 world x y z").color(NamedTextColor.RED));
-            playErrorSound(player);
+            SoundHelper.playError(player);
             player.sendMessage(Component.text("請重新輸入，或輸入 cancel 取消").color(NamedTextColor.YELLOW));
             return;
         }
 
         gui.pendingInputs.remove(player.getUniqueId());
         switch (type) {
-            case SPAWN_LOCATION -> plugin.getConfigManager().setBossSpawnLocation(bossId, loc);
-            case REALTIME_LB_LOCATION -> plugin.getConfigManager().setRealtimeLBLocation(bossId, loc);
-            case HISTORY_LB_LOCATION -> plugin.getConfigManager().setHistoryLBLocation(bossId, loc);
+            case SPAWN_LOCATION -> configService.setBossSpawnLocation(bossId, loc);
+            case REALTIME_LB_LOCATION -> configService.setRealtimeLBLocation(bossId, loc);
+            case HISTORY_LB_LOCATION -> configService.setHistoryLBLocation(bossId, loc);
             default -> { return; }
         }
-        plugin.applyConfigChanges();
+        bossService.reloadConfig();
         player.sendMessage(Component.text("已設定座標").color(NamedTextColor.GREEN));
-        playSuccessSound(player);
+        SoundHelper.playSuccess(player);
         gui.openBossMenu(player, bossId);
     }
 
@@ -372,14 +368,14 @@ public class SettingsListener implements Listener {
             int seconds = Integer.parseInt(message.trim());
             if (seconds < 0) throw new NumberFormatException();
             gui.pendingInputs.remove(player.getUniqueId());
-            plugin.getConfigManager().setBossSpawnInterval(bossId, seconds);
-            plugin.applyConfigChanges();
+            configService.setBossSpawnInterval(bossId, seconds);
+            bossService.reloadConfig();
             player.sendMessage(Component.text("已設定生成間隔: " + (seconds > 0 ? seconds + " 秒" : "已停用")).color(NamedTextColor.GREEN));
-            playSuccessSound(player);
+            SoundHelper.playSuccess(player);
             gui.openBossMenu(player, bossId);
         } catch (NumberFormatException e) {
             player.sendMessage(Component.text("請輸入有效的非負整數").color(NamedTextColor.RED));
-            playErrorSound(player);
+            SoundHelper.playError(player);
             player.sendMessage(Component.text("請重新輸入，或輸入 cancel 取消").color(NamedTextColor.YELLOW));
         }
     }
@@ -401,14 +397,14 @@ public class SettingsListener implements Listener {
 
             String scheduleString = parts[0] + " " + String.format("%02d:%02d", hour, minute);
             gui.pendingInputs.remove(player.getUniqueId());
-            plugin.getConfigManager().addBossScheduledTime(bossId, scheduleString);
-            plugin.applyConfigChanges();
+            configService.addBossScheduledTime(bossId, scheduleString);
+            bossService.reloadConfig();
             player.sendMessage(Component.text("已新增排程: " + scheduleString).color(NamedTextColor.GREEN));
-            playSuccessSound(player);
+            SoundHelper.playSuccess(player);
             gui.openBossMenu(player, bossId);
         } catch (Exception e) {
             player.sendMessage(Component.text("格式無效！請使用: 星期 時:分（例如 MONDAY 20:00）").color(NamedTextColor.RED));
-            playErrorSound(player);
+            SoundHelper.playError(player);
             player.sendMessage(Component.text("星期: MONDAY~SUNDAY").color(NamedTextColor.GRAY));
             player.sendMessage(Component.text("請重新輸入，或輸入 cancel 取消").color(NamedTextColor.YELLOW));
         }
@@ -419,19 +415,17 @@ public class SettingsListener implements Listener {
             int seconds = Integer.parseInt(message.trim());
             if (seconds <= 0) throw new NumberFormatException();
             gui.pendingInputs.remove(player.getUniqueId());
-            plugin.getConfigManager().setBossDespawnTimeout(bossId, seconds);
-            plugin.applyConfigChanges();
+            configService.setBossDespawnTimeout(bossId, seconds);
+            bossService.reloadConfig();
             player.sendMessage(Component.text("已設定消失逾時: " + seconds + " 秒").color(NamedTextColor.GREEN));
-            playSuccessSound(player);
+            SoundHelper.playSuccess(player);
             gui.openBossMenu(player, bossId);
         } catch (NumberFormatException e) {
             player.sendMessage(Component.text("請輸入有效的正整數").color(NamedTextColor.RED));
-            playErrorSound(player);
+            SoundHelper.playError(player);
             player.sendMessage(Component.text("請重新輸入，或輸入 cancel 取消").color(NamedTextColor.YELLOW));
         }
     }
-
-    // ==================== MythicMob ID Lookup ====================
 
     public List<String> getMythicMobIds() {
         try {
@@ -443,22 +437,6 @@ public class SettingsListener implements Listener {
             return List.of();
         }
     }
-
-    // ==================== Sound Feedback ====================
-
-    private void playSuccessSound(Player player) {
-        player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1.0f, 1.2f);
-    }
-
-    private void playErrorSound(Player player) {
-        player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 1.0f, 0.6f);
-    }
-
-    private void playCancelSound(Player player) {
-        player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.5f, 1.0f);
-    }
-
-    // ==================== Utility ====================
 
     private Location parseLocationInput(String input, Player player) {
         String[] parts = input.trim().split("\\s+");

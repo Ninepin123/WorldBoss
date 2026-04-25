@@ -1,42 +1,42 @@
 package me.ninepin.worldboss.loot;
 
-import me.ninepin.worldboss.WorldBoss;
+import me.ninepin.worldboss.service.DropService;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
-import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.Bukkit;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class LootGUI {
 
-    private final WorldBoss plugin;
+    private final DropService dropService;
+
     final Map<UUID, String> openGUIs = new HashMap<>();
-    final Map<UUID, String> awaitingChanceInput = new HashMap<>();
+    final Map<UUID, String> awaitingChanceInput = new ConcurrentHashMap<>();
 
-    // Fixed 6x9 layout: rows 0-4 (slots 0-44) for drops, row 5 (slots 45-53) for controls
     static final int GUI_SIZE = 54;
-    static final int DROP_AREA_END = 45; // exclusive, slots 0-44
-    static final int BACK_SLOT = 45; // Back button in bottom row
-    static final int INFO_SLOT = 49; // Center of bottom row
+    static final int DROP_AREA_END = 45;
+    static final int BACK_SLOT = 45;
+    static final int INFO_SLOT = 49;
 
-    public LootGUI(WorldBoss plugin) {
-        this.plugin = plugin;
+    public LootGUI(DropService dropService) {
+        this.dropService = dropService;
     }
 
     public void openDropsGUI(Player player, String bossId) {
-        List<LootConfig.DropEntry> drops = plugin.getLootConfig().getDrops(bossId);
+        List<LootConfig.DropEntry> drops = dropService.getDrops(bossId);
 
         Inventory gui = Bukkit.createInventory(null, GUI_SIZE,
                 Component.text(ChatColor.GOLD + "Boss 掉落設定: " + bossId));
 
-        // Fill bottom row with glass
         for (int i = 45; i < 54; i++) {
             ItemStack filler = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
             ItemMeta fillerMeta = filler.getItemMeta();
@@ -45,7 +45,6 @@ public class LootGUI {
             gui.setItem(i, filler);
         }
 
-        // Display existing drops with chance info (slots 0-44)
         for (int i = 0; i < drops.size() && i < DROP_AREA_END; i++) {
             LootConfig.DropEntry drop = drops.get(i);
             ItemStack display = drop.item().clone();
@@ -63,7 +62,6 @@ public class LootGUI {
             gui.setItem(i, display);
         }
 
-        // Back button
         ItemStack backItem = new ItemStack(Material.BARRIER);
         ItemMeta backMeta = backItem.getItemMeta();
         backMeta.displayName(Component.text("返回 Boss 設定")
@@ -71,7 +69,6 @@ public class LootGUI {
         backItem.setItemMeta(backMeta);
         gui.setItem(BACK_SLOT, backItem);
 
-        // Instruction item in bottom row center
         ItemStack instructionItem = new ItemStack(Material.PAPER);
         ItemMeta instructionMeta = instructionItem.getItemMeta();
         instructionMeta.displayName(Component.text("掉落物設定說明")

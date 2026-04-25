@@ -1,8 +1,13 @@
 package me.ninepin.worldboss.command;
 
-import me.ninepin.worldboss.WorldBoss;
 import me.ninepin.worldboss.boss.BossData;
-import me.ninepin.worldboss.boss.BossManager;
+import me.ninepin.worldboss.gui.SettingsGUI;
+import me.ninepin.worldboss.gui.SettingsListener;
+import me.ninepin.worldboss.loot.LootGUI;
+import me.ninepin.worldboss.service.BossService;
+import me.ninepin.worldboss.service.ConfigService;
+import me.ninepin.worldboss.service.DropService;
+import me.ninepin.worldboss.util.SoundHelper;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
@@ -12,7 +17,6 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabExecutor;
 import org.bukkit.entity.Player;
-import org.bukkit.Sound;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -24,10 +28,22 @@ import java.util.UUID;
 
 public class CommandHandler implements TabExecutor {
 
-    private final WorldBoss plugin;
+    private final ConfigService configService;
+    private final BossService bossService;
+    private final DropService dropService;
+    private final SettingsGUI settingsGUI;
+    private final SettingsListener settingsListener;
+    private final LootGUI lootGUI;
 
-    public CommandHandler(WorldBoss plugin) {
-        this.plugin = plugin;
+    public CommandHandler(ConfigService configService, BossService bossService,
+                          DropService dropService, SettingsGUI settingsGUI,
+                          SettingsListener settingsListener, LootGUI lootGUI) {
+        this.configService = configService;
+        this.bossService = bossService;
+        this.dropService = dropService;
+        this.settingsGUI = settingsGUI;
+        this.settingsListener = settingsListener;
+        this.lootGUI = lootGUI;
     }
 
     @Override
@@ -89,7 +105,7 @@ public class CommandHandler implements TabExecutor {
                     player.sendMessage(Component.text("用法: /wbadmin drops <bossId>").color(NamedTextColor.RED));
                     return;
                 }
-                cmdDrops(player, args[1]);
+                cmdDrops(player, args[1], lootGUI);
             }
             case "setdrop" -> {
                 if (!(sender instanceof Player player)) {
@@ -125,12 +141,11 @@ public class CommandHandler implements TabExecutor {
     }
 
     private void cmdList(CommandSender sender) {
-        Map<String, BossData> bosses = plugin.getConfigManager().getBosses();
-        BossManager bossManager = plugin.getBossManager();
+        Map<String, BossData> bosses = configService.getBosses();
 
         sender.sendMessage(Component.text("===== 世界 Boss 列表 =====").color(NamedTextColor.GOLD));
         for (BossData boss : bosses.values()) {
-            boolean active = bossManager.isBossActive(boss.getId());
+            boolean active = bossService.isBossActive(boss.getId());
             NamedTextColor statusColor = active ? NamedTextColor.GREEN : NamedTextColor.RED;
             String status = active ? "存活中" : "等待生成";
 
@@ -143,14 +158,13 @@ public class CommandHandler implements TabExecutor {
     }
 
     private void cmdInfo(CommandSender sender, String bossId) {
-        BossData boss = plugin.getConfigManager().getBoss(bossId);
+        BossData boss = configService.getBoss(bossId);
         if (boss == null) {
             sender.sendMessage(Component.text("找不到 Boss: " + bossId).color(NamedTextColor.RED));
             return;
         }
 
-        BossManager bossManager = plugin.getBossManager();
-        boolean active = bossManager.isBossActive(bossId);
+        boolean active = bossService.isBossActive(bossId);
 
         sender.sendMessage(Component.text("===== Boss 資訊 =====").color(NamedTextColor.GOLD));
         sender.sendMessage(Component.text("名稱: ").color(NamedTextColor.WHITE)
@@ -169,58 +183,54 @@ public class CommandHandler implements TabExecutor {
     }
 
     private void cmdSpawn(CommandSender sender, String bossId) {
-        BossData boss = plugin.getConfigManager().getBoss(bossId);
+        BossData boss = configService.getBoss(bossId);
         if (boss == null) {
             sender.sendMessage(Component.text("找不到 Boss: " + bossId).color(NamedTextColor.RED));
             return;
         }
 
-        BossManager bossManager = plugin.getBossManager();
-        if (bossManager.isBossActive(bossId)) {
+        if (bossService.isBossActive(bossId)) {
             sender.sendMessage(Component.text("此 Boss 已經在場！").color(NamedTextColor.RED));
             return;
         }
 
-        if (bossManager.spawnBoss(boss)) {
-            bossManager.getSpawnScheduler().cancelAll(bossId);
+        if (bossService.spawnBoss(boss)) {
+            bossService.cancelCountdowns(bossId);
             sender.sendMessage(Component.text("Boss ").color(NamedTextColor.GREEN)
                     .append(LegacyComponentSerializer.legacySection().deserialize(
                             ChatColor.translateAlternateColorCodes('&', boss.getDisplayName())))
                     .append(Component.text(" 已生成！").color(NamedTextColor.GREEN)));
-            plugin.getHologramManager().onBossSpawn(bossId);
         } else {
             sender.sendMessage(Component.text("Boss 生成失敗！").color(NamedTextColor.RED));
         }
     }
 
     private void cmdDespawn(CommandSender sender, String bossId) {
-        BossManager bossManager = plugin.getBossManager();
-        if (!bossManager.isBossActive(bossId)) {
+        if (!bossService.isBossActive(bossId)) {
             sender.sendMessage(Component.text("此 Boss 不在場！").color(NamedTextColor.RED));
             return;
         }
 
-        bossManager.despawnBoss(bossId, true);
-        plugin.getDamageTracker().resetBoss(bossId);
+        bossService.despawnBoss(bossId, false);
         sender.sendMessage(Component.text("Boss 已強制消失！").color(NamedTextColor.GREEN));
     }
 
     private void cmdReload(CommandSender sender) {
-        plugin.applyConfigChanges();
+        bossService.reloadConfig();
         sender.sendMessage(Component.text("配置已重新載入！").color(NamedTextColor.GREEN));
     }
 
-    private void cmdDrops(Player player, String bossId) {
-        BossData boss = plugin.getConfigManager().getBoss(bossId);
+    private void cmdDrops(Player player, String bossId, LootGUI lootGUI) {
+        BossData boss = configService.getBoss(bossId);
         if (boss == null) {
             player.sendMessage(Component.text("找不到 Boss: " + bossId).color(NamedTextColor.RED));
             return;
         }
-        plugin.getLootGUI().openDropsGUI(player, bossId);
+        lootGUI.openDropsGUI(player, bossId);
     }
 
     private void cmdSetDrop(Player player, String bossId, String chanceStr) {
-        BossData boss = plugin.getConfigManager().getBoss(bossId);
+        BossData boss = configService.getBoss(bossId);
         if (boss == null) {
             player.sendMessage(Component.text("找不到 Boss: " + bossId).color(NamedTextColor.RED));
             return;
@@ -241,22 +251,20 @@ public class CommandHandler implements TabExecutor {
             return;
         }
 
-        plugin.getLootConfig().saveDrop(bossId, handItem.clone(), chance);
+        dropService.saveDrop(bossId, handItem.clone(), chance);
         player.sendMessage(Component.text("已新增掉落物品（機率: " + chance + "%）").color(NamedTextColor.GREEN));
     }
 
     private void cmdSetMob(Player player, String bossId, String mythicMobId) {
-        if (!plugin.getConfigManager().bossExists(bossId)) {
+        if (!configService.bossExists(bossId)) {
             player.sendMessage(Component.text("找不到 Boss: " + bossId).color(NamedTextColor.RED));
             return;
         }
 
-        // Verify the MythicMob ID exists
-        List<String> mobIds = plugin.getSettingsListener().getMythicMobIds();
+        List<String> mobIds = settingsListener.getMythicMobIds();
         if (!mobIds.isEmpty() && !mobIds.contains(mythicMobId)) {
             player.sendMessage(Component.text("找不到 MythicMob ID: " + mythicMobId).color(NamedTextColor.RED));
 
-            // Show similar IDs
             List<String> similar = mobIds.stream()
                     .filter(id -> id.toLowerCase().contains(mythicMobId.toLowerCase()))
                     .limit(10)
@@ -270,23 +278,22 @@ public class CommandHandler implements TabExecutor {
             return;
         }
 
-        plugin.getConfigManager().setBossMythicMobId(bossId, mythicMobId);
-        plugin.applyConfigChanges();
+        configService.setBossMythicMobId(bossId, mythicMobId);
+        bossService.reloadConfig();
         player.sendMessage(Component.text("已設定 Boss " + bossId + " 的 MythicMob ID: " + mythicMobId)
                 .color(NamedTextColor.GREEN));
 
-        // Reopen settings GUI if the player was in it
         UUID uuid = player.getUniqueId();
-        String lastBoss = plugin.getSettingsListener().getLastBossMenu(uuid);
+        String lastBoss = settingsListener.getLastBossMenu(uuid);
         if (lastBoss != null && lastBoss.equals(bossId)) {
-            Bukkit.getScheduler().runTaskLater(plugin, () ->
-                    plugin.getSettingsGUI().openBossMenu(player, bossId), 1L);
+            Bukkit.getScheduler().runTaskLater(Bukkit.getPluginManager().getPlugin("WorldBoss"), () ->
+                    settingsGUI.openBossMenu(player, bossId), 1L);
         }
     }
 
     private void cmdSettings(Player player) {
-        plugin.getSettingsGUI().openMainMenu(player);
-        player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1.0f, 1.2f);
+        settingsGUI.openMainMenu(player);
+        SoundHelper.playSuccess(player);
     }
 
     private void sendPlayerUsage(CommandSender sender) {
@@ -318,7 +325,7 @@ public class CommandHandler implements TabExecutor {
     @Override
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
         List<String> completions = new ArrayList<>();
-        List<String> bossIds = new ArrayList<>(plugin.getConfigManager().getBossIds());
+        List<String> bossIds = new ArrayList<>(configService.getBossIds());
 
         switch (command.getName().toLowerCase()) {
             case "wb" -> {
@@ -337,9 +344,7 @@ public class CommandHandler implements TabExecutor {
                         completions.addAll(bossIds);
                     }
                 } else if (args.length == 3 && args[0].equalsIgnoreCase("setmob")) {
-                    // Tab complete MythicMob IDs
-                    List<String> mobIds = plugin.getSettingsListener().getMythicMobIds();
-                    completions.addAll(mobIds);
+                    completions.addAll(settingsListener.getMythicMobIds());
                 }
             }
         }

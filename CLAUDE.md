@@ -14,7 +14,7 @@ No tests exist. No linting is configured.
 
 ## Project Overview
 
-A **Paper 1.21 Minecraft plugin** for scheduled World Boss encounters with damage leaderboards (DecentHolograms), loot chests, and Discord notifications. Hard depends on **MythicMobs** and **DecentHolograms**. Soft depends on **DiscordSRV**.
+A **Paper 1.21 Minecraft plugin** for scheduled World Boss encounters with damage leaderboards (DecentHolograms) and Discord notifications. Hard depends on **MythicMobs** and **DecentHolograms**. Soft depends on **DiscordSRV**.
 
 Language: Java 21. UI text is in Traditional Chinese (zh_TW).
 
@@ -33,16 +33,13 @@ DamageListener ──→ DamageTracker ──→ HologramManager (DecentHologram
                                        ↓
 BossDeathListener → DamageLeaderboard (history persistence)
                   → RewardManager (top 3 players get rolled drops in inventory)
-                  → LootChestManager (spawn chest with full drop table)
                   → DiscordNotificationService (spawn/death/despawn embeds)
                   → resets DamageTracker, triggers next spawn cycle
 ```
 
-### Dual Reward System
+### Reward System
 
-Two independent reward systems run on boss death, both using the same drop table from LootConfig:
-- **RewardManager**: Distributes rolled drops directly to the top 3 damage dealers' inventories (`rollDrops()` — each item rolls independently, not mutually exclusive).
-- **LootChestManager**: Spawns a physical chest in the world. Only players who dealt damage to that boss can open it (enforced by `ChestInteractListener`). Chest contents use the full drop table (`getDrops()`), not rolled.
+**RewardManager** distributes rolled drops directly to the top 3 damage dealers' inventories. Each item in the drop table rolls independently (`rollDrops()`), so multiple items can drop at once.
 
 ### Key Design Patterns
 
@@ -96,9 +93,6 @@ leaderboard:
     realtime: { enabled, location, display-count, title, format }
     history: { enabled, location, display-count, title, format }
     hide-realtime-on-death: false
-loot:
-  <bossId>:
-    chest-location: { world, x, y, z }
 ```
 
 Drop items: `drops/<bossId>.yml` with `items.<index>.{item-bytes, display-name, chance}`.

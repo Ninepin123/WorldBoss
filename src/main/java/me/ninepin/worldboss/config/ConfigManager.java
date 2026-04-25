@@ -11,6 +11,7 @@ import java.io.File;
 
 import java.time.DayOfWeek;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,7 +22,6 @@ public class ConfigManager {
     private FileConfiguration config;
     private final Map<String, BossData> bosses = new HashMap<>();
     private final Map<String, LeaderboardConfig> leaderboardConfigs = new HashMap<>();
-    private final Map<String, Location> chestLocations = new HashMap<>();
 
     public ConfigManager(WorldBoss plugin) {
         this.plugin = plugin;
@@ -34,13 +34,11 @@ public class ConfigManager {
 
         loadBosses();
         loadLeaderboard();
-        loadLoot();
     }
 
     public void reload() {
         bosses.clear();
         leaderboardConfigs.clear();
-        chestLocations.clear();
         load();
     }
 
@@ -118,22 +116,6 @@ public class ConfigManager {
         }
     }
 
-    private void loadLoot() {
-        ConfigurationSection lootSection = config.getConfigurationSection("loot");
-        if (lootSection == null) return;
-
-        for (String bossId : lootSection.getKeys(false)) {
-            ConfigurationSection section = lootSection.getConfigurationSection(bossId);
-            if (section == null) continue;
-
-            ConfigurationSection chestLoc = section.getConfigurationSection("chest-location");
-            Location loc = parseLocation(chestLoc);
-            if (loc != null) {
-                chestLocations.put(bossId, loc);
-            }
-        }
-    }
-
     private Location parseLocation(ConfigurationSection section) {
         if (section == null) return null;
         String worldName = section.getString("world");
@@ -161,7 +143,7 @@ public class ConfigManager {
     // === Getters ===
 
     public Map<String, BossData> getBosses() {
-        return bosses;
+        return Collections.unmodifiableMap(bosses);
     }
 
     public BossData getBoss(String bossId) {
@@ -172,14 +154,8 @@ public class ConfigManager {
         return leaderboardConfigs.get(bossId);
     }
 
-    public Location getChestLocation(String bossId) {
-        return chestLocations.get(bossId);
-    }
-
     public List<String> getBossIds() {
-        ConfigurationSection bossSection = config.getConfigurationSection("boss-settings.bosses");
-        if (bossSection == null) return List.of();
-        return new ArrayList<>(bossSection.getKeys(false));
+        return new ArrayList<>(bosses.keySet());
     }
 
     public boolean bossExists(String bossId) {
@@ -204,6 +180,21 @@ public class ConfigManager {
     public String getDespawnMessage() {
         return config.getString("broadcast.despawn-message",
                 "&6&l【世界Boss】&e%boss_name% &f因無人攻擊已消失！");
+    }
+
+    public String getDeathMessage() {
+        return config.getString("broadcast.death-message",
+                "&6&l【世界Boss】&e%boss_name% &f已被討伐！前三名： &a%top_players%");
+    }
+
+    public String getRewardMessage() {
+        return config.getString("reward.reward-message",
+                "&a你獲得了 %boss_name% 的第 %rank% 名獎勵！共 %count% 個物品");
+    }
+
+    public String getNoDropMessage() {
+        return config.getString("reward.no-drop-message",
+                "&e你是 %boss_name% 的第 %rank% 名，但本次未擲中任何獎勵");
     }
 
     // === Save Methods ===
@@ -256,15 +247,6 @@ public class ConfigManager {
         plugin.saveConfig();
     }
 
-    public void setChestLocation(String bossId, Location loc) {
-        String base = "loot." + bossId + ".chest-location";
-        config.set(base + ".world", loc.getWorld().getName());
-        config.set(base + ".x", loc.getX());
-        config.set(base + ".y", loc.getY());
-        config.set(base + ".z", loc.getZ());
-        plugin.saveConfig();
-    }
-
     public void setRealtimeLBLocation(String bossId, Location loc) {
         String base = "leaderboard." + bossId + ".realtime.location";
         config.set(base + ".world", loc.getWorld().getName());
@@ -286,13 +268,16 @@ public class ConfigManager {
     public void deleteBoss(String bossId) {
         config.set("boss-settings.bosses." + bossId, null);
         config.set("leaderboard." + bossId, null);
-        config.set("loot." + bossId, null);
         plugin.saveConfig();
 
-        // Delete drops file
         File dropsFile = new File(plugin.getDataFolder(), "drops/" + bossId + ".yml");
         if (dropsFile.exists()) {
             dropsFile.delete();
+        }
+
+        File historyFile = new File(plugin.getDataFolder(), "data/" + bossId + "_history.yml");
+        if (historyFile.exists()) {
+            historyFile.delete();
         }
     }
 
@@ -329,13 +314,6 @@ public class ConfigManager {
         config.set(lbBase + ".history.format", "&e#%rank% &f%player% &7- &c%damage%");
 
         config.set(lbBase + ".hide-realtime-on-death", false);
-
-        // Default loot config
-        String lootBase = "loot." + bossId;
-        config.set(lootBase + ".chest-location.world", spawnLoc.getWorld().getName());
-        config.set(lootBase + ".chest-location.x", spawnLoc.getX() + 2);
-        config.set(lootBase + ".chest-location.y", spawnLoc.getY());
-        config.set(lootBase + ".chest-location.z", spawnLoc.getZ());
 
         plugin.saveConfig();
     }

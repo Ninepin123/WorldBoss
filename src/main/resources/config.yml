@@ -41,19 +41,12 @@ leaderboard:
       format: "&e#%rank% &f%player% &7- &c%damage%"
     hide-realtime-on-death: true
 
-loot:
-  example_boss:
-    chest-location:
-      world: "world"
-      x: 102.0
-      y: 64.0
-      z: 200.0
-
 broadcast:
   countdown-message: "&6&l【世界Boss】&e%boss_name% &f將在 &c%time% &f後出現！"
   countdown-times: [30, 20, 10]
   spawn-message: "&6&l【世界Boss】&e%boss_name% &f已降臨！快去挑戰吧！"
   despawn-message: "&6&l【世界Boss】&e%boss_name% &f因無人攻擊已消失！"
+  death-message: "&6&l【世界Boss】&e%boss_name% &f已被討伐！前三名： &a%top_players%"
 
 reward:
   reward-message: "&a你獲得了 %boss_name% 的第 %rank% 名獎勵！共 %count% 個物品"

@@ -1,5 +1,9 @@
 package me.ninepin.worldboss.loot;
 
+import me.ninepin.worldboss.gui.SettingsGUI;
+import me.ninepin.worldboss.service.ConfigService;
+import me.ninepin.worldboss.service.DropService;
+import me.ninepin.worldboss.util.SoundHelper;
 import me.ninepin.worldboss.WorldBoss;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -12,7 +16,6 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.Sound;
 
 import java.util.UUID;
 
@@ -20,10 +23,17 @@ public class LootListener implements Listener {
 
     private final WorldBoss plugin;
     private final LootGUI gui;
+    private final DropService dropService;
+    private final ConfigService configService;
+    private final SettingsGUI settingsGUI;
 
-    public LootListener(WorldBoss plugin, LootGUI gui) {
+    public LootListener(WorldBoss plugin, LootGUI gui, DropService dropService,
+                        ConfigService configService, SettingsGUI settingsGUI) {
         this.plugin = plugin;
         this.gui = gui;
+        this.dropService = dropService;
+        this.configService = configService;
+        this.settingsGUI = settingsGUI;
     }
 
     @EventHandler
@@ -37,18 +47,15 @@ public class LootListener implements Listener {
 
         Inventory topInventory = event.getView().getTopInventory();
 
-        // Handle clicks in the top (GUI) inventory
         if (clickedInventory.equals(topInventory)) {
             int slot = event.getSlot();
 
-            // Block control row completely
             if (slot >= 45) {
                 event.setCancelled(true);
 
-                // Back button
                 if (slot == LootGUI.BACK_SLOT) {
                     gui.openGUIs.remove(player.getUniqueId());
-                    plugin.getSettingsGUI().openBossMenu(player, bossId);
+                    settingsGUI.openBossMenu(player, bossId);
                 }
                 return;
             }
@@ -59,33 +66,29 @@ public class LootListener implements Listener {
             boolean hasCursorItem = cursorItem != null && !cursorItem.getType().isAir();
 
             if (hasExistingItem) {
-                // Clicking an existing drop
                 event.setCancelled(true);
 
                 if (event.isLeftClick()) {
-                    // Edit chance via chat input
                     gui.awaitingChanceInput.put(player.getUniqueId(), bossId + ":" + slot);
                     player.closeInventory();
                     player.sendMessage(Component.text("請在聊天欄輸入新的掉落機率 (0-100):")
                             .color(NamedTextColor.YELLOW));
                 } else if (event.isRightClick()) {
-                    // Remove drop from config
                     removeDropAtSlot(bossId, slot);
                     player.sendMessage(Component.text("已移除掉落物品")
                             .color(NamedTextColor.RED));
-                    playSuccessSound(player);
+                    SoundHelper.playSuccess(player);
                     gui.openDropsGUI(player, bossId);
                 }
             } else if (hasCursorItem && slot < LootGUI.DROP_AREA_END) {
-                // Place new item from cursor into empty slot
                 event.setCancelled(true);
                 ItemStack newItem = cursorItem.clone();
                 Bukkit.getScheduler().runTask(plugin, () -> player.setItemOnCursor(null));
 
-                plugin.getLootConfig().saveDrop(bossId, newItem, 50.0);
+                dropService.saveDrop(bossId, newItem, 50.0);
                 player.sendMessage(Component.text("已新增掉落物品（預設機率 50%）")
                         .color(NamedTextColor.GREEN));
-                playSuccessSound(player);
+                SoundHelper.playSuccess(player);
                 gui.openDropsGUI(player, bossId);
             } else {
                 event.setCancelled(true);
@@ -93,13 +96,13 @@ public class LootListener implements Listener {
             return;
         }
 
-        // Handle shift-click from bottom (player) inventory to add new drops
         if (clickedInventory.equals(event.getView().getBottomInventory())) {
             if (event.isShiftClick()) {
                 ItemStack clickedItem = event.getCurrentItem();
                 if (clickedItem != null && !clickedItem.getType().isAir()) {
                     event.setCancelled(true);
                     ItemStack newItem = clickedItem.clone();
+                    newItem.setAmount(1);
                     int slot = event.getSlot();
 
                     Bukkit.getScheduler().runTask(plugin, () -> {
@@ -113,10 +116,10 @@ public class LootListener implements Listener {
                         }
                     });
 
-                    plugin.getLootConfig().saveDrop(bossId, newItem, 50.0);
+                    dropService.saveDrop(bossId, newItem, 50.0);
                     player.sendMessage(Component.text("已新增掉落物品（預設機率 50%）")
                             .color(NamedTextColor.GREEN));
-                    playSuccessSound(player);
+                    SoundHelper.playSuccess(player);
                     gui.openDropsGUI(player, bossId);
                 }
             }
@@ -129,7 +132,6 @@ public class LootListener implements Listener {
         String bossId = gui.openGUIs.get(player.getUniqueId());
         if (bossId == null) return;
 
-        // Block dragging in control row
         for (int slot : event.getRawSlots()) {
             if (slot >= 45 && slot < 54) {
                 event.setCancelled(true);
@@ -143,8 +145,6 @@ public class LootListener implements Listener {
         if (!(event.getPlayer() instanceof Player player)) return;
         gui.openGUIs.remove(player.getUniqueId());
     }
-
-    // ==================== Chat Input ====================
 
     public boolean isAwaitingChanceInput(UUID playerUUID) {
         return gui.awaitingChanceInput.containsKey(playerUUID);
@@ -164,19 +164,19 @@ public class LootListener implements Listener {
                 Player player = Bukkit.getPlayer(playerUUID);
                 if (player != null) {
                     player.sendMessage(Component.text("機率必須在 0-100 之間").color(NamedTextColor.RED));
-                    playErrorSound(player);
+                    SoundHelper.playError(player);
                 }
                 return;
             }
 
-            int dropIndex = resolveDropIndex(bossId, slot);
+            int dropIndex = dropService.resolveDropIndex(bossId, slot);
             if (dropIndex >= 0) {
-                plugin.getLootConfig().updateChance(bossId, dropIndex, chance);
+                dropService.updateChance(bossId, dropIndex, chance);
                 Player player = Bukkit.getPlayer(playerUUID);
                 if (player != null) {
                     player.sendMessage(Component.text("已更新掉落機率為 " + chance + "%")
                             .color(NamedTextColor.GREEN));
-                    playSuccessSound(player);
+                    SoundHelper.playSuccess(player);
                     gui.openDropsGUI(player, bossId);
                 }
             }
@@ -184,7 +184,7 @@ public class LootListener implements Listener {
             Player player = Bukkit.getPlayer(playerUUID);
             if (player != null) {
                 player.sendMessage(Component.text("請輸入有效的數字").color(NamedTextColor.RED));
-                playErrorSound(player);
+                SoundHelper.playError(player);
             }
         }
     }
@@ -193,39 +193,10 @@ public class LootListener implements Listener {
         gui.awaitingChanceInput.remove(playerUUID);
     }
 
-    // ==================== Sound Feedback ====================
-
-    private void playSuccessSound(Player player) {
-        player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1.0f, 1.2f);
-    }
-
-    private void playErrorSound(Player player) {
-        player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 1.0f, 0.6f);
-    }
-
-    // ==================== Drop Management ====================
-
     private void removeDropAtSlot(String bossId, int slot) {
-        int dropIndex = resolveDropIndex(bossId, slot);
+        int dropIndex = dropService.resolveDropIndex(bossId, slot);
         if (dropIndex >= 0) {
-            plugin.getLootConfig().removeDrop(bossId, dropIndex);
+            dropService.removeDrop(bossId, dropIndex);
         }
-    }
-
-    private int resolveDropIndex(String bossId, int slot) {
-        java.io.File file = new java.io.File(plugin.getDataFolder(), "drops/" + bossId + ".yml");
-        if (!file.exists()) return -1;
-
-        org.bukkit.configuration.file.YamlConfiguration yaml =
-                org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(file);
-        org.bukkit.configuration.ConfigurationSection items = yaml.getConfigurationSection("items");
-        if (items == null) return -1;
-
-        java.util.List<String> keys = new java.util.ArrayList<>(items.getKeys(false));
-        keys.sort(java.util.Comparator.comparingInt(Integer::parseInt));
-        if (slot < keys.size()) {
-            return Integer.parseInt(keys.get(slot));
-        }
-        return -1;
     }
 }

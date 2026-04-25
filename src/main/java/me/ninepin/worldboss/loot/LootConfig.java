@@ -26,14 +26,12 @@ public class LootConfig {
     public List<DropEntry> getDrops(String bossId) {
         File file = new File(dropsFolder, bossId + ".yml");
         if (!file.exists()) {
-            plugin.getLogger().warning("找不到掉落設定檔: " + file.getAbsolutePath());
             return Collections.emptyList();
         }
 
         YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
         ConfigurationSection items = yaml.getConfigurationSection("items");
         if (items == null) {
-            plugin.getLogger().warning("掉落設定檔中沒有 items 區段: " + bossId);
             return Collections.emptyList();
         }
 
@@ -50,7 +48,9 @@ public class LootConfig {
                 plugin.getLogger().warning("無法反序列化掉落物品: bossId=" + bossId + " key=" + key + " displayName=" + displayName);
             }
         }
-        plugin.getLogger().info("載入 " + drops.size() + " 個掉落物品: bossId=" + bossId);
+        if (!drops.isEmpty()) {
+            plugin.getLogger().info("載入 " + drops.size() + " 個掉落物品: bossId=" + bossId);
+        }
         return drops;
     }
 
@@ -120,8 +120,30 @@ public class LootConfig {
 
     private int getNextIndex(ConfigurationSection items) {
         return items.getKeys(false).stream()
-                .mapToInt(Integer::parseInt)
+                .mapToInt(key -> {
+                    try {
+                        return Integer.parseInt(key);
+                    } catch (NumberFormatException e) {
+                        return -1;
+                    }
+                })
                 .max().orElse(-1) + 1;
+    }
+
+    public int resolveDropIndex(String bossId, int slot) {
+        File file = new File(dropsFolder, bossId + ".yml");
+        if (!file.exists()) return -1;
+
+        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
+        ConfigurationSection items = yaml.getConfigurationSection("items");
+        if (items == null) return -1;
+
+        List<String> keys = new ArrayList<>(items.getKeys(false));
+        keys.sort(java.util.Comparator.comparingInt(Integer::parseInt));
+        if (slot < keys.size()) {
+            return Integer.parseInt(keys.get(slot));
+        }
+        return -1;
     }
 
     public record DropEntry(ItemStack item, double chance, String displayName) {}

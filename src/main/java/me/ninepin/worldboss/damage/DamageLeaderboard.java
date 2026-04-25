@@ -62,9 +62,22 @@ public class DamageLeaderboard {
         if (bossHistory == null || bossHistory.isEmpty()) return;
 
         File file = new File(dataFolder, bossId + "_history.yml");
+        saveHistoryToFile(file, bossHistory);
+    }
+
+    public void saveHistoryAsync(String bossId) {
+        Map<UUID, HistoryRecord> bossHistory = historyMap.get(bossId);
+        if (bossHistory == null || bossHistory.isEmpty()) return;
+
+        Map<UUID, HistoryRecord> snapshot = new HashMap<>(bossHistory);
+        File file = new File(dataFolder, bossId + "_history.yml");
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> saveHistoryToFile(file, snapshot));
+    }
+
+    private void saveHistoryToFile(File file, Map<UUID, HistoryRecord> data) {
         YamlConfiguration yaml = new YamlConfiguration();
 
-        for (Map.Entry<UUID, HistoryRecord> entry : bossHistory.entrySet()) {
+        for (Map.Entry<UUID, HistoryRecord> entry : data.entrySet()) {
             String path = "records." + entry.getKey().toString();
             yaml.set(path + ".name", entry.getValue().name());
             yaml.set(path + ".damage", entry.getValue().damage());
@@ -73,7 +86,7 @@ public class DamageLeaderboard {
         try {
             yaml.save(file);
         } catch (IOException e) {
-            plugin.getLogger().log(Level.SEVERE, "無法儲存歷史排行榜: " + bossId, e);
+            plugin.getLogger().log(Level.SEVERE, "無法儲存歷史排行榜: " + file.getName(), e);
         }
     }
 
@@ -96,7 +109,7 @@ public class DamageLeaderboard {
                 bossHistory.put(uuid, new HistoryRecord(name, damage));
             }
         }
-        saveHistory(bossId);
+        saveHistoryAsync(bossId);
     }
 
     public List<Map.Entry<UUID, HistoryRecord>> getTopHistory(String bossId, int n) {

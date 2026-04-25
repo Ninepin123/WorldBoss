@@ -2,8 +2,8 @@ package me.ninepin.worldboss.listener;
 
 import io.lumine.mythic.bukkit.MythicBukkit;
 import io.lumine.mythic.core.mobs.ActiveMob;
-import me.ninepin.worldboss.WorldBoss;
-import me.ninepin.worldboss.boss.BossManager;
+import me.ninepin.worldboss.service.BossService;
+import me.ninepin.worldboss.service.DamageService;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
@@ -16,21 +16,21 @@ import java.util.Optional;
 
 public class DamageListener implements Listener {
 
-    private final WorldBoss plugin;
+    private final BossService bossService;
+    private final DamageService damageService;
 
-    public DamageListener(WorldBoss plugin) {
-        this.plugin = plugin;
+    public DamageListener(BossService bossService, DamageService damageService) {
+        this.bossService = bossService;
+        this.damageService = damageService;
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onEntityDamage(EntityDamageByEntityEvent event) {
         if (!(event.getEntity() instanceof LivingEntity target)) return;
 
-        BossManager bossManager = plugin.getBossManager();
-        String bossId = bossManager.getBossIdByEntity(target);
+        String bossId = bossService.getBossIdByEntity(target);
         if (bossId == null) return;
 
-        // Verify it's actually a MythicMob
         Optional<ActiveMob> mobOpt = MythicBukkit.inst().getMobManager().getActiveMob(target.getUniqueId());
         if (mobOpt.isEmpty()) return;
 
@@ -38,8 +38,8 @@ public class DamageListener implements Listener {
         if (attacker == null) return;
 
         double damage = event.getFinalDamage();
-        plugin.getDamageTracker().recordDamage(bossId, attacker.getUniqueId(), damage);
-        bossManager.markAttacked(bossId);
+        damageService.recordDamage(bossId, attacker.getUniqueId(), damage);
+        bossService.markAttacked(bossId);
     }
 
     private Player resolveAttacker(EntityDamageByEntityEvent event) {

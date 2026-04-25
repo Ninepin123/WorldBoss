@@ -2,14 +2,14 @@ package me.ninepin.worldboss.hologram;
 
 import eu.decentsoftware.holograms.api.DHAPI;
 import eu.decentsoftware.holograms.api.holograms.Hologram;
-import me.ninepin.worldboss.WorldBoss;
 import me.ninepin.worldboss.boss.BossData;
 import me.ninepin.worldboss.config.ConfigManager;
 import me.ninepin.worldboss.damage.DamageLeaderboard;
-import me.ninepin.worldboss.damage.DamageTracker;
+import me.ninepin.worldboss.service.ConfigService;
+import me.ninepin.worldboss.service.DamageService;
 import org.bukkit.Bukkit;
-import org.bukkit.Location;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 
@@ -18,12 +18,16 @@ import java.util.logging.Level;
 
 public class HologramManager {
 
-    private final WorldBoss plugin;
+    private final JavaPlugin plugin;
+    private final ConfigService configService;
+    private final DamageService damageService;
     private BukkitTask updateTask;
     private final Set<String> activeRealtimeHolograms = new HashSet<>();
 
-    public HologramManager(WorldBoss plugin) {
+    public HologramManager(JavaPlugin plugin, ConfigService configService, DamageService damageService) {
         this.plugin = plugin;
+        this.configService = configService;
+        this.damageService = damageService;
     }
 
     public void init() {
@@ -37,11 +41,10 @@ public class HologramManager {
     }
 
     private void createAllHolograms() {
-        for (String bossId : plugin.getConfigManager().getBosses().keySet()) {
-            ConfigManager.LeaderboardConfig lbConfig = plugin.getConfigManager().getLeaderboardConfig(bossId);
+        for (String bossId : configService.getBosses().keySet()) {
+            ConfigManager.LeaderboardConfig lbConfig = configService.getLeaderboardConfig(bossId);
             if (lbConfig == null) continue;
 
-            // Create history hologram (always visible)
             if (lbConfig.historyEnabled && lbConfig.historyLocation != null && lbConfig.historyLocation.getWorld() != null) {
                 try {
                     removeHologramIfExists(getHistoryName(bossId));
@@ -52,7 +55,6 @@ public class HologramManager {
                 }
             }
 
-            // Create realtime hologram (always visible)
             if (lbConfig.realtimeEnabled && lbConfig.realtimeLocation != null && lbConfig.realtimeLocation.getWorld() != null) {
                 try {
                     removeHologramIfExists(getRealtimeName(bossId));
@@ -66,41 +68,42 @@ public class HologramManager {
     }
 
     public void onBossSpawn(String bossId) {
-        ConfigManager.LeaderboardConfig lbConfig = plugin.getConfigManager().getLeaderboardConfig(bossId);
+        ConfigManager.LeaderboardConfig lbConfig = configService.getLeaderboardConfig(bossId);
         if (lbConfig == null || !lbConfig.realtimeEnabled) return;
 
-        // Hologram already exists from init, just mark as active for frequent updates
         activeRealtimeHolograms.add(bossId);
         refreshRealtimeHologram(bossId);
     }
 
     public void onBossDeath(String bossId) {
-        ConfigManager.LeaderboardConfig lbConfig = plugin.getConfigManager().getLeaderboardConfig(bossId);
+        ConfigManager.LeaderboardConfig lbConfig = configService.getLeaderboardConfig(bossId);
 
-        // Update history hologram
         if (lbConfig != null && lbConfig.historyEnabled) {
             refreshHistoryHologram(bossId);
         }
 
-        // Don't remove realtime hologram, just refresh (shows "尚無傷害記錄" since damage resets)
         activeRealtimeHolograms.remove(bossId);
-        refreshRealtimeHologram(bossId);
+
+        if (lbConfig != null && lbConfig.hideRealtimeOnDeath) {
+            removeHologramIfExists(getRealtimeName(bossId));
+        } else {
+            refreshRealtimeHologram(bossId);
+        }
     }
 
     private void startRealtimeUpdater() {
         updateTask = new BukkitRunnable() {
             @Override
             public void run() {
-                // Only frequently update active boss holograms
                 for (String bossId : new HashSet<>(activeRealtimeHolograms)) {
                     refreshRealtimeHologram(bossId);
                 }
             }
-        }.runTaskTimer(plugin, 40L, 40L); // 2 seconds
+        }.runTaskTimer(plugin, 40L, 40L);
     }
 
     private void refreshRealtimeHologram(String bossId) {
-        ConfigManager.LeaderboardConfig lbConfig = plugin.getConfigManager().getLeaderboardConfig(bossId);
+        ConfigManager.LeaderboardConfig lbConfig = configService.getLeaderboardConfig(bossId);
         if (lbConfig == null) return;
 
         String holoName = getRealtimeName(bossId);
@@ -118,7 +121,7 @@ public class HologramManager {
     }
 
     private void refreshHistoryHologram(String bossId) {
-        ConfigManager.LeaderboardConfig lbConfig = plugin.getConfigManager().getLeaderboardConfig(bossId);
+        ConfigManager.LeaderboardConfig lbConfig = configService.getLeaderboardConfig(bossId);
         if (lbConfig == null) return;
 
         String holoName = getHistoryName(bossId);
@@ -135,8 +138,7 @@ public class HologramManager {
         List<String> lines = new ArrayList<>();
         lines.add(getBossDisplayName(bossId) + " " + lbConfig.realtimeTitle);
 
-        DamageTracker tracker = plugin.getDamageTracker();
-        List<Map.Entry<UUID, Double>> top = tracker.getTopDamage(bossId, lbConfig.realtimeDisplayCount);
+        List<Map.Entry<UUID, Double>> top = damageService.getTopDamage(bossId, lbConfig.realtimeDisplayCount);
 
         if (top.isEmpty()) {
             lines.add("&7尚無傷害記錄");
@@ -160,9 +162,8 @@ public class HologramManager {
         List<String> lines = new ArrayList<>();
         lines.add(getBossDisplayName(bossId) + " " + lbConfig.historyTitle);
 
-        DamageLeaderboard leaderboard = plugin.getDamageLeaderboard();
         List<Map.Entry<UUID, DamageLeaderboard.HistoryRecord>> top =
-                leaderboard.getTopHistory(bossId, lbConfig.historyDisplayCount);
+                damageService.getTopHistory(bossId, lbConfig.historyDisplayCount);
 
         if (top.isEmpty()) {
             lines.add("&7尚無歷史記錄");
@@ -207,7 +208,7 @@ public class HologramManager {
     }
 
     private void removeAllHolograms() {
-        for (String bossId : plugin.getConfigManager().getBosses().keySet()) {
+        for (String bossId : configService.getBosses().keySet()) {
             removeHologramIfExists(getRealtimeName(bossId));
             removeHologramIfExists(getHistoryName(bossId));
         }
@@ -223,7 +224,7 @@ public class HologramManager {
     }
 
     private String getBossDisplayName(String bossId) {
-        BossData boss = plugin.getConfigManager().getBoss(bossId);
+        BossData boss = configService.getBoss(bossId);
         return boss != null ? boss.getDisplayName() : bossId;
     }
 }
