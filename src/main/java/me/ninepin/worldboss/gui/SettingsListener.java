@@ -95,8 +95,7 @@ public class SettingsListener implements Listener {
                     gui.openBossMenu(player, bossIds.get(bossIndex));
                 } else if (rightClick) {
                     String bossId = bossIds.get(bossIndex);
-                    configService.deleteBoss(bossId);
-                    bossService.reloadConfig();
+                    bossService.deleteBoss(bossId);
                     player.sendMessage(Component.text("已刪除 Boss: " + bossId).color(NamedTextColor.GREEN));
                     SoundHelper.playSuccess(player);
                     gui.openMainMenu(player);
@@ -151,15 +150,19 @@ public class SettingsListener implements Listener {
             if (leftClick) {
                 setLocationToCurrent(player, bossId, SettingsGUI.InputType.REALTIME_LB_LOCATION);
             } else if (rightClick) {
-                promptChatInput(player, bossId, SettingsGUI.InputType.REALTIME_LB_LOCATION,
-                        "請在聊天室輸入即時排行榜座標，格式: x y z 或 world x y z:");
+                bossService.clearRealtimeLeaderboard(bossId);
+                player.sendMessage(Component.text("已清除即時排行榜資料: " + bossId).color(NamedTextColor.GREEN));
+                SoundHelper.playSuccess(player);
+                gui.openBossMenu(player, bossId);
             }
         } else if (slot == SettingsGUI.SLOT_HISTORY_LB) {
             if (leftClick) {
                 setLocationToCurrent(player, bossId, SettingsGUI.InputType.HISTORY_LB_LOCATION);
             } else if (rightClick) {
-                promptChatInput(player, bossId, SettingsGUI.InputType.HISTORY_LB_LOCATION,
-                        "請在聊天室輸入歷史排行榜座標，格式: x y z 或 world x y z:");
+                bossService.clearHistoryLeaderboard(bossId);
+                player.sendMessage(Component.text("已清除歷史排行榜資料: " + bossId).color(NamedTextColor.GREEN));
+                SoundHelper.playSuccess(player);
+                gui.openBossMenu(player, bossId);
             }
         }
     }

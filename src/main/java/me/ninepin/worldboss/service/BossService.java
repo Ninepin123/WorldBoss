@@ -168,6 +168,26 @@ public class BossService {
         spawnScheduler.cancelAll();
     }
 
+    public void clearRealtimeLeaderboard(String bossId) {
+        damageService.clearRealtimeLeaderboard(bossId);
+        hologramManager.refreshBossHolograms(bossId);
+    }
+
+    public void clearHistoryLeaderboard(String bossId) {
+        damageService.clearHistoryLeaderboard(bossId);
+        hologramManager.refreshBossHolograms(bossId);
+    }
+
+    public void deleteBoss(String bossId) {
+        spawnScheduler.cancelBoss(bossId);
+        bossManager.removeEntity(bossId);
+        damageService.clearAllLeaderboardData(bossId);
+        hologramManager.removeBossHolograms(bossId);
+
+        configService.deleteBoss(bossId);
+        reloadConfig();
+    }
+
     public void reloadConfig() {
         configService.reloadConfigData();
         spawnScheduler.cancelAll();

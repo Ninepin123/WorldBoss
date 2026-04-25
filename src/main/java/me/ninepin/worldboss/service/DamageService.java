@@ -43,6 +43,19 @@ public class DamageService {
         tracker.resetBoss(bossId);
     }
 
+    public void clearRealtimeLeaderboard(String bossId) {
+        tracker.resetBoss(bossId);
+    }
+
+    public void clearHistoryLeaderboard(String bossId) {
+        leaderboard.clearHistory(bossId);
+    }
+
+    public void clearAllLeaderboardData(String bossId) {
+        clearRealtimeLeaderboard(bossId);
+        clearHistoryLeaderboard(bossId);
+    }
+
     public Map<UUID, Double> getAllDamage(String bossId) {
         return tracker.getAllDamage(bossId);
     }

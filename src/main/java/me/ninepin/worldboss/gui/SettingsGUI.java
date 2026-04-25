@@ -217,7 +217,7 @@ public class SettingsGUI {
                 "&7目前: &f" + rtLbLocStr,
                 "",
                 "&e左鍵 → 使用當前位置",
-                "&c右鍵 → 手動輸入座標"));
+                "&c右鍵 → 清除即時排行榜資料"));
 
         String histLbLocStr = (lbConfig != null && lbConfig.historyLocation != null)
                 ? formatLocation(lbConfig.historyLocation) : "未設定";
@@ -225,7 +225,7 @@ public class SettingsGUI {
                 "&7目前: &f" + histLbLocStr,
                 "",
                 "&e左鍵 → 使用當前位置",
-                "&c右鍵 → 手動輸入座標"));
+                "&c右鍵 → 清除歷史排行榜資料"));
 
         gui.setItem(SLOT_BACK, createMenuItem(Material.BARRIER, "&c返回主選單"));
 

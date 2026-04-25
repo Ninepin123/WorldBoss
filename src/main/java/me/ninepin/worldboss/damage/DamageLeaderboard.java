@@ -15,6 +15,7 @@ public class DamageLeaderboard {
 
     private final WorldBoss plugin;
     private final Map<String, Map<UUID, HistoryRecord>> historyMap = new HashMap<>();
+    private final Map<String, Integer> historyVersions = Collections.synchronizedMap(new HashMap<>());
     private final File dataFolder;
 
     public DamageLeaderboard(WorldBoss plugin) {
@@ -70,8 +71,12 @@ public class DamageLeaderboard {
         if (bossHistory == null || bossHistory.isEmpty()) return;
 
         Map<UUID, HistoryRecord> snapshot = new HashMap<>(bossHistory);
+        int version = historyVersions.getOrDefault(bossId, 0);
         File file = new File(dataFolder, bossId + "_history.yml");
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> saveHistoryToFile(file, snapshot));
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            if (!Objects.equals(historyVersions.getOrDefault(bossId, 0), version)) return;
+            saveHistoryToFile(file, snapshot);
+        });
     }
 
     private void saveHistoryToFile(File file, Map<UUID, HistoryRecord> data) {
@@ -98,6 +103,7 @@ public class DamageLeaderboard {
 
     public void updateHistory(String bossId, Map<UUID, Double> currentDamage) {
         Map<UUID, HistoryRecord> bossHistory = historyMap.computeIfAbsent(bossId, k -> new HashMap<>());
+        historyVersions.merge(bossId, 1, Integer::sum);
 
         for (Map.Entry<UUID, Double> entry : currentDamage.entrySet()) {
             UUID uuid = entry.getKey();
@@ -122,6 +128,16 @@ public class DamageLeaderboard {
                 ))
                 .limit(n)
                 .toList();
+    }
+
+    public void clearHistory(String bossId) {
+        historyMap.remove(bossId);
+        historyVersions.merge(bossId, 1, Integer::sum);
+
+        File file = new File(dataFolder, bossId + "_history.yml");
+        if (file.exists() && !file.delete()) {
+            plugin.getLogger().warning("無法刪除歷史排行榜資料: " + file.getName());
+        }
     }
 
     public record HistoryRecord(String name, double damage) {}

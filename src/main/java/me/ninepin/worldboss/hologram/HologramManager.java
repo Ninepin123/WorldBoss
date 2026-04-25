@@ -91,6 +91,24 @@ public class HologramManager {
         }
     }
 
+    public void refreshBossHolograms(String bossId) {
+        ConfigManager.LeaderboardConfig lbConfig = configService.getLeaderboardConfig(bossId);
+        if (lbConfig == null) return;
+
+        if (lbConfig.realtimeEnabled) {
+            refreshRealtimeHologram(bossId);
+        }
+        if (lbConfig.historyEnabled) {
+            refreshHistoryHologram(bossId);
+        }
+    }
+
+    public void removeBossHolograms(String bossId) {
+        activeRealtimeHolograms.remove(bossId);
+        removeHologramIfExists(getRealtimeName(bossId));
+        removeHologramIfExists(getHistoryName(bossId));
+    }
+
     private void startRealtimeUpdater() {
         updateTask = new BukkitRunnable() {
             @Override
@@ -122,7 +140,7 @@ public class HologramManager {
 
     private void refreshHistoryHologram(String bossId) {
         ConfigManager.LeaderboardConfig lbConfig = configService.getLeaderboardConfig(bossId);
-        if (lbConfig == null) return;
+        if (lbConfig == null || lbConfig.historyLocation == null || lbConfig.historyLocation.getWorld() == null) return;
 
         String holoName = getHistoryName(bossId);
         try {
